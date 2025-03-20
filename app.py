@@ -10,7 +10,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime, timedelta
 import json
 import os
-from multiprocessing import Pool
+from multiprocessing.dummy import Pool as ThreadPool  # שינוי ל-ThreadPool
 import logging
 import time
 import shutil
@@ -29,7 +29,6 @@ MONITORED_FLIGHTS = {}
 LAST_RUN_TIME = None
 
 # הגדרות Twilio לשליחת SMS
-
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
@@ -38,13 +37,16 @@ ENABLE_SMS = False
 
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-def setup_driver(headless=True):  # שיניתי ל-True כברירת מחדל עבור Render
+def setup_driver(headless=True):
     try:
         service = Service(ChromeDriverManager().install())
         options = webdriver.ChromeOptions()
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')  # מפחית שימוש בזיכרון
+        options.add_argument('--disable-extensions')  # מפחית שימוש בזיכרון
+        options.add_argument('--window-size=1920,1080')  # גודל חלון סביר
         options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36')
         driver = webdriver.Chrome(service=service, options=options)
         logger.debug("ChromeDriver נטען בהצלחה")
@@ -261,7 +263,7 @@ def home():
                 tasks.append((date_str, "TLV", "ETM", "חזור"))
                 current += timedelta(days=1)
             
-            with Pool(processes=2) as pool:  # שיניתי ל-2 תהליכים כדי להפחית עומס ב-Render
+            with ThreadPool(processes=2) as pool:  # שימוש ב-ThreadPool במקום multiprocessing
                 results = pool.map(scrape_flights, tasks)
             
             all_flights = []
@@ -310,7 +312,8 @@ def remove_monitor_flight():
     return jsonify({'status': 'success', 'message': 'טיסה הוסרה ממעקב'})
 
 if __name__ == '__main__':
-    monitor_thread = threading.Thread(target=monitor_flights, daemon=True)
-    monitor_thread.start()
-    port = int(os.environ.get("PORT", 10000))  # Render משתמש ב-10000 כברירת מחדל
-    app.run(host="0.0.0.0", port=port, debug=False)  # debug=False לפרודקשן
+    # השבתת monitor_flights זמנית לבדיקת ה-deployment
+    # monitor_thread = threading.Thread(target=monitor_flights, daemon=True)
+    # monitor_thread.start()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False)
